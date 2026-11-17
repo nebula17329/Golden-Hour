@@ -1,0 +1,148 @@
+#lan-duel {
+  width: min(77rem, calc(100vw - 3rem));
+  max-height: calc(100dvh - 3rem);
+  padding: 2.6rem 3rem;
+  border: 1px solid var(--line);
+  border-top: .3rem solid var(--or);
+  background: #17120f;
+  color: #fff;
+  box-shadow: 0 2rem 8rem #000a;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+#lan-duel::backdrop { background: #080604bf; }
+#lan-duel h2 { margin: 0 0 1rem; font-size: 3.6rem; letter-spacing: .08em; }
+#lan-duel p { margin: 1.2rem 0; line-height: 1.5; text-transform: none; }
+#lan-duel .lan-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem 1.6rem; margin: 1.4rem 0 1.8rem; }
+#lan-duel label { display: block; color: var(--or2); }
+#lan-duel [data-addresses] { grid-column: 1 / -1; }
+#lan-duel :is(textarea, select, input) {
+  display: block;
+  width: 100%;
+  margin-top: .5rem;
+  padding: .8rem;
+  border: 1px solid var(--line);
+  background: #0a0807;
+  color: inherit;
+  font: max(12px, 1.45rem) Consolas, monospace;
+  resize: none;
+}
+
+#lan-duel :is(.lan-teams, .lan-bots) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max(6rem, 66px) minmax(0, 1fr);
+}
+#lan-duel .lan-team { --team: var(--fr); min-width: 0; }
+#lan-duel .lan-team.t1 { --team: var(--en); }
+#lan-duel .lan-team-heading,
+#lan-duel .lan-operator,
+#lan-duel .lan-move button {
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+}
+#lan-duel .lan-team-heading {
+  width: 100%;
+  margin: 0;
+  padding: .7rem .8rem;
+  text-align: left;
+  color: var(--team);
+  font-weight: 700;
+  border: 1px solid var(--line);
+  background: #ffffff08;
+}
+#lan-duel .lan-roster { list-style: none; margin: .5rem 0 0; padding: 0; }
+#lan-duel .lan-roster li {
+  min-height: 3.5rem;
+  border-bottom: 1px solid var(--line);
+}
+#lan-duel .lan-empty {
+  display: flex;
+  align-items: center;
+  padding: 0 .8rem;
+  color: #a79d94;
+  text-transform: none;
+}
+#lan-duel .lan-operator {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .5rem;
+  width: 100%;
+  min-height: 3.5rem;
+  padding: .4rem .8rem;
+  border: 0;
+  text-align: left;
+  background: transparent;
+  color: #fff;
+}
+#lan-duel .lan-operator strong { overflow-wrap: anywhere; text-transform: none; }
+#lan-duel .lan-operator span { flex: 0 0 auto; color: #c4b7a9; font-size: var(--f0); text-transform: none; }
+#lan-duel .lan-operator[draggable="true"] { cursor: grab; }
+#lan-duel button.lan-operator:hover,
+#lan-duel .lan-swap-target .lan-operator:focus-visible { background: #ffffff0d; }
+#lan-duel .lan-operator[aria-pressed="true"] {
+  box-shadow: inset .2rem 0 var(--team);
+  background: color-mix(in srgb, var(--team) 14%, transparent);
+}
+#lan-duel .lan-roster .lan-drop-target {
+  outline: 1px solid var(--team);
+  outline-offset: -1px;
+  background: color-mix(in srgb, var(--team) 18%, transparent);
+}
+#lan-duel .lan-move {
+  display: grid;
+  align-content: center;
+  justify-content: center;
+  gap: .6rem;
+  background: linear-gradient(var(--line), var(--line)) center / 1px 100% no-repeat;
+}
+#lan-duel .lan-move button {
+  min-width: 3.4rem;
+  min-height: 3rem;
+  background: #231b14;
+  color: var(--or2);
+  border: 1px solid var(--line);
+}
+#lan-duel .lan-move button:not(:disabled):hover,
+#lan-duel .lan-move button[aria-pressed="true"] { border-color: var(--or2); }
+#lan-duel .lan-readonly button { visibility: hidden; }
+#lan-duel .lan-bots {
+  grid-template-columns: minmax(0, 1fr) max(11rem, 88px) minmax(0, 1fr);
+  align-items: center;
+  margin-top: 1.2rem;
+}
+#lan-duel .lan-bots [data-add] {
+  --add-sweep: 90deg;
+  width: min(19.5rem, 100%);
+  height: 4.45rem;
+  padding-inline: 1rem;
+  justify-self: start;
+  background-image: linear-gradient(var(--add-sweep), rgba(255, 255, 255, .075), transparent);
+}
+#lan-duel .lan-bots [data-add="1"] {
+  --add-sweep: 270deg;
+  justify-self: end;
+  justify-content: flex-end;
+  border-left: 0;
+  border-right: .3rem solid rgba(255, 255, 255, .24);
+}
+#lan-duel .lan-bots [data-add] b { font-size: var(--f3); }
+#lan-duel .lan-bots [data-add]:enabled:is(:hover, :focus-visible) {
+  border-color: var(--or);
+  background-image: linear-gradient(var(--add-sweep), rgba(255, 138, 42, .36), rgba(255, 138, 42, .03) 88%);
+}
+#lan-duel .lan-bots [data-remove] {
+  min-width: 0;
+  padding-inline: .6rem;
+  font-size: var(--f3);
+  letter-spacing: .13em;
+}
+#lan-duel .lan-actions { display: flex; gap: .8rem; margin-top: 1.6rem; flex-wrap: wrap; }
+#lan-duel button:disabled { opacity: .45; cursor: default; }
+@media (max-width: 460px) {
+  #lan-duel { padding: 1.6rem; }
+  #lan-duel .lan-operator { align-items: flex-start; flex-direction: column; gap: 0; }
+}
+.lan-playing #fu { display: none; }
