@@ -515,6 +515,7 @@
         actor._k9hit = actor.k9Pin = null;
       }
       player.stats.shots = player.stats.hits = player.stats.head = 0;
+      ctx.equipment.startRound();
       ctx.hud.matchStart();
       this.spawn(initialPoints.get(this.seat));
       for (const peer of this.peers.values()) this.spawnOpponent(peer, initialPoints.get(peer.id));
@@ -689,6 +690,8 @@
       const { actor } = peer;
       const pos = point.pos || [point.x, point.y || 0, point.z];
       peer.life++;
+      peer.kitLife = null;
+      actor.kit ??= this.api.validEquipment();
       peer.frags = this.api.grenadeCapacity;
       peer.lastPoseAt = -Infinity;
       peer.lastFire = peer.lastMelee = -Infinity;
@@ -716,6 +719,8 @@
         lean: player.lean,
         sprint: player.sprinting, reloading: ctx.arsenal.state === 'reload', weapon: ctx.arsenal.def.id,
         build: ctx.arsenal.def.build, inWater: player.inWater, mantle: player.mode === 'mantle',
+        kit: { grenade: ctx.arsenal.grenadeKind, field: ctx.arsenal.fieldUpgrade },
+        fieldRevision: ctx.arsenal.fieldRevision,
       };
     }
 
@@ -732,6 +737,12 @@
       if (distance > 3 + 24 * Math.min(2, (now - peer.lastPoseAt) / 1000)) return false;
       peer.lastPoseAt = now;
       pose.build = this.api.cleanBuild(pose.weapon, pose.build);
+      if (peer.kitLife !== peer.life) {
+        actor.kit = this.api.validEquipment(pose.kit);
+        this.ctx.equipment.spawnWithField(actor, actor.kit.field, Number.isSafeInteger(pose.fieldRevision) ? pose.fieldRevision : 0);
+        peer.kitLife = peer.life;
+      }
+      pose.kit = actor.kit;
       const canLean = !pose.airborne && !pose.sprint && !pose.mantle && !pose.inWater && !actor.k9Pin
         && (pose.stance === 'stand' || pose.stance === 'crouch');
       pose.lean = canLean
@@ -877,7 +888,7 @@
       k9.request = () => {
         if (!this.active || this.teamMatch && this.host) return this.offline.k9Request();
         if (!this.teamMatch || !match.live || !this.player.alive) return false;
-        if (k9.view.state !== 'ready' || this.player.inWater || this.player.mode === 'mantle') {
+        if (k9.view.state !== 'ready' || !ctx.equipment.allowsK9(this.player.team) || this.player.inWater || this.player.mode === 'mantle') {
           k9._deny();
           return false;
         }
@@ -885,7 +896,7 @@
       };
       k9.release = () => {
         if (!this.active || this.teamMatch && this.host) return this.offline.k9Release();
-        if (!this.teamMatch || !match.live || !this.player.alive) return null;
+        if (!this.teamMatch || !match.live || !this.player.alive || !ctx.equipment.allowsK9(this.player.team)) return null;
         this.action('k9');
         return true;
       };
@@ -962,13 +973,13 @@
       return null;
     }
 
-    throwGrenade(mesh, position, velocity, fuse, owner) {
-      if (!this.active) return this.offline.grenade(mesh, position, velocity, fuse, owner);
+    throwGrenade(mesh, position, velocity, fuse, owner, kind = 'frag') {
+      if (!this.active) return this.offline.grenade(mesh, position, velocity, fuse, owner, kind);
       if (!this.host) {
         if (this.match.live) this.action('grenade', { pos: position.toArray(), vel: velocity.toArray() });
         return;
       }
-      const grenade = this.offline.grenade(mesh, position, velocity, fuse, owner);
+      const grenade = this.offline.grenade(mesh, position, velocity, fuse, owner, kind);
       grenade.lanId = ++this.nextGrenade;
       return grenade;
     }
@@ -986,14 +997,20 @@
         if (amount > 0 && Math.abs(y - ctx.world.groundAt(x, z, y, .12)) < .12) {
           this.damage(remote, amount, null, { weapon: 'fell' });
         }
-      } else if (kind === 'k9' && this.teamMatch) {
+      } else if (kind === 'k9' && this.teamMatch && ctx.equipment.allowsK9(remote.team)) {
         this.deployGuestK9(peer);
       } else if (kind === 'resupply') {
         this.refillGuestGrenade(peer, message.supplyId);
-      } else if (kind === 'grenade' && peer.frags > 0 && triple(message.vel, 34)
+      } else if ((kind === 'grenade' || kind === 'recon') && triple(message.vel, 34)
           && triple(message.pos, 160) && remote.eye.distanceTo(this.vector(message.pos)) < 1.2) {
-        peer.frags--;
-        this.throwGrenade(ctx.buildGrenade(), this.vector(message.pos), this.vector(message.vel), 2.3, remote);
+        const pos = this.vector(message.pos);
+        const vel = this.vector(message.vel);
+        if (kind === 'recon') ctx.equipment.throwBeacon(pos, vel, remote);
+        else if (peer.frags > 0) {
+          const grenade = remote.kit.grenade;
+          peer.frags--;
+          this.throwGrenade(ctx.buildGrenade(grenade), pos, vel, this.api.grenadeTypes[grenade].fuse, remote, grenade);
+        }
       } else if (kind === 'glass') {
         const pane = ctx.glass.panes[message.pane];
         if (pane && finite(message.a, 160) && finite(message.y, 40) && triple(message.dir, 1)
@@ -1107,7 +1124,7 @@
       const medals = [];
       if (killer) {
         match.k9.onKill(target, killer, hit);
-        if (this.teamMatch && killer.lanHuman && !match.k9.unitOf(killer.team)) {
+        if (this.teamMatch && killer.lanHuman && !match.k9.unitOf(killer.team) && !ctx.equipment.activeBeacon(killer.team)) {
           const k9 = match.k9;
           if (killer.team !== player.team) this.opposingCharge = Math.min(1, this.opposingCharge + this.api.k9Tuning.chargePerKill);
           else k9.charge = Math.min(1, k9.charge + this.api.k9Tuning.chargePerKill);
@@ -1163,7 +1180,7 @@
       if (!this.host) return;
       if (this.teamMatch) {
         match.k9.update(dt);
-        if (match.live && this.opposingHumans && !match.k9.unitOf(1 - player.team)) {
+        if (match.live && this.opposingHumans && !match.k9.unitOf(1 - player.team) && !ctx.equipment.activeBeacon(1 - player.team)) {
           this.opposingCharge = Math.min(1, this.opposingCharge + dt / this.api.k9Tuning.chargeTime);
           if (this.opposingCharge === 1 && !this.opposingK9Ready) {
             this.opposingK9Ready = true;
@@ -1228,6 +1245,7 @@
 
     publish() {
       const { match, player } = this;
+      const equipment = this.ctx.equipment;
       const players = { [this.seat]: { ...this.actorState(player), pose: this.localPose() } };
       for (const { id, actor, pose } of this.peers.values()) {
         players[id] = { ...this.actorState(actor), pose, pin: this.actorId(actor.k9Pin) };
@@ -1240,12 +1258,13 @@
           aimYaw: bot.aimYaw, stance: bot.state.stance, sprint: bot.state.sprint, airborne: bot.state.airborne,
           reloading: bot.state.reloading, reloadDur: bot.state.reloadDur, engage: bot.state.engage, weapon: bot.def.id })),
         k9: this.teamMatch ? this.k9State() : null,
+        equipment: equipment.snapshot(),
         chairs: this.api.fireplaceChairs.map(propPose),
         pianoBench: propPose(this.api.pianoBench),
         pianoBooks: propPose(this.api.pianoBooks),
         poolFloats: this.api.poolFloats.map(propPose),
         nades: this.ctx.physics.bodies.filter(body => body.lanId && !body.dead)
-          .map(body => [body.lanId, ...body.x, body.fuse, body.fuseTotal, this.actorId(body.owner)]),
+          .map(body => [body.lanId, ...body.x, body.fuse, body.fuseTotal, this.actorId(body.owner), body.kind]),
       });
     }
 
@@ -1277,6 +1296,7 @@
       this.updateCountdown();
       this.syncBots(message.bots);
       if (message.k9) this.syncK9(message.k9, ours);
+      ctx.equipment.sync(message.equipment);
       if (message.chairs) this.api.fireplaceChairs.forEach((chair, index) => {
         const pose = message.chairs[index];
         ctx.physics.setPropPose(chair, pose?.pos, pose?.rotation);
@@ -1440,11 +1460,11 @@
     syncGrenades(list = []) {
       const scene = this.ctx.botCtx.scene;
       const live = new Set();
-      for (const [id, x, y, z, fuse = 1, fuseTotal = 1, owner] of list) {
+      for (const [id, x, y, z, fuse = 1, fuseTotal = 1, owner, kind = 'frag'] of list) {
         live.add(id);
         let grenade = this.nades.get(id);
         if (!grenade) {
-          grenade = { type: 'nade', x: [x, y, z], obj: this.ctx.buildGrenade() };
+          grenade = { type: 'nade', kind, x: [x, y, z], obj: this.ctx.buildGrenade(kind) };
           this.nades.set(id, grenade);
           scene.add(grenade.obj);
         }
@@ -1532,6 +1552,16 @@
         }
         case 'grenadeBounce':
           ctx.audio.grenadeBounce(this.vector(message.pos));
+          break;
+        case 'equipmentBurst':
+          ctx.equipment.burstCue(message.grenade, this.vector(message.pos));
+          break;
+        case 'equipmentFlash':
+          if (message.life === this.spawnId) ctx.equipment.blind(message.strength);
+          break;
+        case 'reconPulse':
+          ctx.audio.equipment('pulse', this.vector(message.pos));
+          ctx.equipment.markTargets((message.targets || []).map(actorById));
           break;
         case 'chandelierFall':
           ctx.hotel.chandelier.startFall();
