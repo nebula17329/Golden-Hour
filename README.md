@@ -1,4 +1,4 @@
-﻿# Solstice: Golden Hour
+﻿# Golden Hour
 
 A browser-based tactical shooter, currently in **beta**.
 
